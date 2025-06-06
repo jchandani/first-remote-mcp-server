@@ -47,7 +47,7 @@ export const SendPostcardInputSchema = z.object({
 export type SendPostcardInput = z.infer<typeof SendPostcardInputSchema>;
 
 // Define our MCP agent with tools
-export class Click2mailAgent extends McpAgent {
+export class MyMCP extends McpAgent {
     server = new McpServer({
         name: "Click2mail",
         version: "1.0.0", // You might want to specify a version
@@ -183,11 +183,11 @@ export default {
         const url = new URL(request.url);
 
         if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-            return Click2mailAgent.serveSSE("/sse").fetch(request, env, ctx);
+            return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
         }
 
         if (url.pathname === "/mcp") {
-            return Click2mailAgent.serve("/mcp").fetch(request, env, ctx);
+            return MyMCP.serve("/mcp").fetch(request, env, ctx);
         }
 
         return new Response("Not found", { status: 404 });
