@@ -360,7 +360,7 @@ export class MyMCP extends McpAgent {
                     const verdict = data?.result?.verdict;
                     const is_valid = verdict?.hasUnconfirmedComponents === false && verdict?.hasInferredComponents === false;
 
-                    const corrected = data?.result?.address;
+                    const corrected = data?.result?.address.formattedAddress;
                     const messages = data?.result?.validationMessages?.map((msg: any) => msg.text) || [];
                     return { content: [{ type: "text", text: `Corrected Address: ${corrected}` }] };
 
