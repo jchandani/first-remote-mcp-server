@@ -162,6 +162,7 @@ export class MyMCP extends McpAgent {
 
         this.server.tool(
             "view_proof",
+            "Gets the proof PDF for a given job ID. Use this when the user requests proof for a job.",
             z.object({
                 jobid: z.string(),
             }),
