@@ -46,6 +46,26 @@ export const SendPostcardInputSchema = z.object({
 });
 export type SendPostcardInput = z.infer<typeof SendPostcardInputSchema>;
 
+function getClick2mailBasicAuthHeader(): HeadersInit {
+    return {
+       "Authorization": `Basic dGVzdFByaW9yaXR5OkppdmF0ZWFtMTIzNA==`,
+       "Accept": "application/json"
+   };
+}
+
+// Helper function to get Bearer Auth header for EasyPost
+function getEasyPostAuthHeader(): HeadersInit {
+   const EASYPOST_API_KEY = process.env.EASYPOST_API_KEY;
+   if (!EASYPOST_API_KEY) {
+       throw new Error("Missing EasyPost API key in environment");
+   }
+   return {
+       "Authorization": `Bearer ${EASYPOST_API_KEY}`,
+       "Content-Type": "application/json",
+   };
+}
+
+
 // Define our MCP agent with tools
 export class MyMCP extends McpAgent {
     server = new McpServer({
@@ -76,8 +96,67 @@ export class MyMCP extends McpAgent {
             async (input) => {
                 // TODO: Implement create_shipping_label logic here based on Python code
                 // This should call the EasyPost API as in the original Python function.
-                console.log("create_shipping_label tool called with input:", input);
-                return { content: [{ type: "text", text: `Placeholder for shipping label URL` }] };
+                const url = "https://api.easypost.com/v2/shipments";
+                const headers = getEasyPostAuthHeader();
+
+                const payload = {
+                    shipment: {
+                        to_address: {
+                            name: input.to_address_name,
+                            street1: input.to_address_street1,
+                            city: input.to_address_city,
+                            state: input.to_address_state,
+                            zip: input.to_address_zip,
+                            country: input.to_address_country,
+                            // Add phone and email if required by EasyPost API and available
+                            // phone: "9234567890",
+                            // email: "support@easypost.com"
+                        },
+                        from_address: {
+                            name: input.from_address_name,
+                            street1: input.from_address_street1,
+                            city: input.from_address_city,
+                            state: input.from_address_state,
+                            zip: input.from_address_zip,
+                            country: input.from_address_country,
+                            // Add phone and email if required by EasyPost API and available
+                            // phone: "9234567890",
+                            // email: "support@easypost.com"
+                        },
+                        parcel: {
+                            weight: parseFloat(input.parcel_weight) // Convert weight to number if needed
+                        },
+                        // TODO: Service and carrier_accounts might need to be inputs or configured
+                        service: "Priority",
+                        carrier_accounts: this.env.EASYPOST_CARRIER_ACCOUNT_ID ? [this.env.EASYPOST_CARRIER_ACCOUNT_ID] : undefined // Use array if multiple accounts
+                    }
+                };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+
+                    const data: any = await response.json();
+                    const labelUrl = data?.postage_label?.label_url;
+
+                    if (labelUrl) {
+                        return { content: [{ type: "text", text: labelUrl }] };
+                    } else {
+                        return { content: [{ type: "text", text: "Label URL not found in response." }] };
+                    }
+
+                } catch (error: any) {
+                    console.error("Error creating shipping label:", error);
+                    return { content: [{ type: "text", text: `Error creating shipping label: ${error.message}` }] };
+                }
             }
         );
 
@@ -87,10 +166,35 @@ export class MyMCP extends McpAgent {
                 jobid: z.string(),
             }),
             async (input) => {
-                // TODO: Implement view_proof logic here based on Python code
-                // This should make an HTTP request to the Click2mail proof endpoint.
-                console.log("view_proof tool called with jobid:", input.jobid);
-                return { content: [{ type: "text", text: `Placeholder for proof URL for job ${input.jobid}` }] };
+                const url = `https://stage-rest.click2mail.com/molpro/jobs/${input.jobid}/proof`;
+                const headers = getClick2mailBasicAuthHeader();
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: headers,
+                        // fetch API doesn't have a direct timeout, consider using a library or AbortController
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        // Handle HTTP errors
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+
+                    const data: any = await response.json();
+                    const statusUrl = data?.statusUrl;
+
+                    if (statusUrl) {
+                        return { content: [{ type: "text", text: statusUrl }] };
+                    } else {
+                        // Handle cases where statusUrl is not in the response
+                        return { content: [{ type: "text", text: "Status URL not found in response." }] };
+                    }
+
+                } catch (error: any) {
+                    console.error("Error viewing proof:", error);
+                    return { content: [{ type: "text", text: `Error viewing proof: ${error.message}` }] };
+                }
             }
         );
 
@@ -100,10 +204,35 @@ export class MyMCP extends McpAgent {
                 jobid: z.string(),
             }),
             async (input) => {
-                // TODO: Implement job_status logic here based on Python code
-                // This should make an HTTP request to the Click2mail job status endpoint.
-                console.log("job_status tool called with jobid:", input.jobid);
-                return { content: [{ type: "text", text: `Placeholder for status of job ${input.jobid}` }] };
+                const url = `https://stage-rest.click2mail.com/molpro/jobs/${input.jobid}`;
+                const headers = getClick2mailBasicAuthHeader();
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: headers,
+                        // timeout: 30000
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+
+                    const data: any = await response.json();
+                    const description = data?.description;
+
+                    if (description) {
+                        return { content: [{ type: "text", text: description }] };
+                    } else {
+                        return { content: [{ type: "text", text: "Job description not found in response." }] };
+                    }
+
+                } catch (error: any) {
+                    console.error("Error getting job status:", error);
+                    // Returning null/undefined as in Python example on error
+                    return { content: [{ type: "text", text: `Error getting job status: ${error.message}` }] };
+                }
             }
         );
 
@@ -113,8 +242,34 @@ export class MyMCP extends McpAgent {
             async () => {
                 // TODO: Implement check_balance logic here based on Python code
                 // This should make an HTTP request to the Click2mail credit endpoint.
-                console.log("check_balance tool called");
-                return { content: [{ type: "text", text: `Placeholder for account balance` }] };
+                const url = `https://stage-rest.click2mail.com/molpro/credit`;
+                const headers = getClick2mailBasicAuthHeader();
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: headers,
+                        // timeout: 30000
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+
+                    const data: any = await response.json();
+                    const balance = data?.balance;
+
+                    if (balance !== undefined) { // Check for undefined as balance could be 0 or null
+                         return { content: [{ type: "text", text: `Available balance: ${balance}` }] };
+                    } else {
+                         return { content: [{ type: "text", text: "Balance information not found in response." }] };
+                    }
+
+                } catch (error: any) {
+                    console.error("Error checking balance:", error);
+                     return { content: [{ type: "text", text: `Error checking balance: ${error.message}` }] };
+                }
             }
         );
 
@@ -164,14 +319,55 @@ export class MyMCP extends McpAgent {
             async (input) => {
                 // TODO: Implement validate_address logic here based on Python code
                 // This should call the Google Address Validation API.
-                console.log("validate_address tool called with input:", input);
-                const placeholderResult: AddressValidationResult = {
-                    is_valid: false,
-                    corrected_address: {},
-                    original_address: input,
-                    messages: ["Placeholder validation result"],
+                const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+                 if (!GOOGLE_API_KEY) {
+                     return { content: [{ type: "text", text: "Google API Key for address validation is not configured." }] };
+                 }
+
+                const url = `https://addressvalidation.googleapis.com/v1:validateAddress?key=${GOOGLE_API_KEY}`;
+
+                const payload = {
+                    address: {
+                        addressLines: [input.address_lines], // Address lines should be an array
+                        locality: input.locality,
+                        postalCode: input.postal_code,
+                        regionCode: input.region_code,
+                    },
+                    enableUspsCass: true // Hardcoded in Python
                 };
-                return { content: [{ type: "json", json: placeholderResult }] };
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`Address validation failed: HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+
+                    const data: any = await response.json();
+                    const verdict = data?.result?.verdict;
+                    const is_valid = verdict?.hasUnconfirmedComponents === false && verdict?.hasInferredComponents === false;
+
+                    const corrected = data?.result?.address;
+                    const messages = data?.result?.validationMessages?.map((msg: any) => msg.text) || [];
+
+                    const validationResult: AddressValidationResult = {
+                        is_valid: is_valid,
+                        corrected_address: corrected || {},
+                        original_address: payload.address,
+                        messages: messages,
+                    };
+
+                    return { content: [{ type: "json", json: validationResult }] };
+
+                } catch (error: any) {
+                     console.error("Error validating address:", error);
+                     return { content: [{ type: "text", text: `Error validating address: ${error.message}` }] };
+                }
             }
         );
     }
