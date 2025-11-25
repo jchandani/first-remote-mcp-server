@@ -163,12 +163,12 @@ export class MyMCP extends McpAgent {
         this.server.tool(
             "view_proof",
             "Gets the proof PDF for a given job ID. Use this when the user requests proof for a job.",
-            z.object({
-                jobid: z.string(),
-            }),
-            async (input) => {
-                console.log("RAW TOOL INPUT >>>", JSON.stringify(input, null, 2));
-                const jobid = input?.jobId ?? input?.jobid;
+            {
+                jobid: z.string()
+			},
+            async (jobid) => {
+                
+                
                 console.log("Job id", jobid);
                 const url = `https://stage-rest.click2mail.com/molpro/jobs/${jobid}/proof`;
                 const headers = getClick2mailBasicAuthHeader();
