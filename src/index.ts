@@ -167,7 +167,8 @@ export class MyMCP extends McpAgent {
                 jobid: z.string(),
             }),
             async (input) => {
-                const url = `https://stage-rest.click2mail.com/molpro/jobs/${input.jobid}/proof`;
+                const jobid = input?.jobId ?? input?.jobid;
+                const url = `https://stage-rest.click2mail.com/molpro/jobs/${jobid}/proof`;
                 const headers = getClick2mailBasicAuthHeader();
                 try {
                     const response = await fetch(url, {
