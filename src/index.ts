@@ -362,15 +362,7 @@ export class MyMCP extends McpAgent {
 
                     const corrected = data?.result?.address;
                     const messages = data?.result?.validationMessages?.map((msg: any) => msg.text) || [];
-
-                    const validationResult: AddressValidationResult = {
-                        is_valid: is_valid,
-                        corrected_address: corrected || {},
-                        original_address: payload.address,
-                        messages: messages,
-                    };
-
-                    return { content: [{ type: "json", json: validationResult }] };
+                    return { content: [{ type: "text", text: `Corrected Address: ${corrected}` }] };
 
                 } catch (error: any) {
                      console.error("Error validating address:", error);
