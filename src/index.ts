@@ -314,14 +314,15 @@ export class MyMCP extends McpAgent {
 
         this.server.tool(
             "validate_address",
-            z.object({
-                address: z.string(),
-                city: z.string(),
-                state: z.string(),
-                zip: z.string(),
-                region_code: z.string().default('US'),
-            }),
-            async ({address, city, state, zip, region_code}) => {
+            {
+                inputSchema: z.object({
+                    address: z.string(),
+                    city: z.string(),
+                    state: z.string(),
+                    zip: z.string(),
+                    region_code: z.string().default('US')}),
+            },
+            async ({inputSchema}) => {
                 // TODO: Implement validate_address logic here based on Python code
                 // This should call the Google Address Validation API.
                 const GOOGLE_API_KEY = env.GOOGLE_API_KEY;
@@ -333,11 +334,11 @@ export class MyMCP extends McpAgent {
 
                 const payload = {
                     address: {
-                        addressLines: [address], // Address lines should be an array
-                        locality: city,
-                        postalCode: zip,
-                        regionCode: region_code,
-                        administrativeArea: state,
+                        addressLines: [inputSchema.address], // Address lines should be an array
+                        locality: inputSchema.city,
+                        postalCode: inputSchema.zip,
+                        regionCode: inputSchema.region_code,
+                        administrativeArea: inputSchema.state,
                     },
                     enableUspsCass: true // Hardcoded in Python
                 };
