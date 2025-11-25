@@ -1,9 +1,10 @@
 import { McpAgent } from "agents/mcp";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { env } from "cloudflare:workers";
 
 // Placeholder types for serverless environment
-type Env = any;
+type Env = { GOOGLE_API_KEY?: string; EASYPOST_API_KEY?: string; EASYPOST_CARRIER_ACCOUNT_ID?: string }; 
 type ExecutionContext = any;
 
 // Define Enums
@@ -55,7 +56,7 @@ function getClick2mailBasicAuthHeader(): HeadersInit {
 
 // Helper function to get Bearer Auth header for EasyPost
 function getEasyPostAuthHeader(): HeadersInit {
-   const EASYPOST_API_KEY = process.env.EASYPOST_API_KEY;
+   const EASYPOST_API_KEY = env.EASYPOST_API_KEY;
    if (!EASYPOST_API_KEY) {
        throw new Error("Missing EasyPost API key in environment");
    }
@@ -169,7 +170,7 @@ export class MyMCP extends McpAgent {
             async ({ jobid }) => {
                 
                 console.log("Job id", jobid);
-                const url = `https://stage-rest.click2mail.com/molpro/jobs/${jobid}/proof`;
+                const url = `https://stage-rest.click2mail.com/molpro/jobs/1128459/proof`;
                 const headers = getClick2mailBasicAuthHeader();
                 try {
                     const response = await fetch(url, {
@@ -207,7 +208,7 @@ export class MyMCP extends McpAgent {
                 jobid: z.string(),
             }),
             async (input) => {
-                const url = `https://stage-rest.click2mail.com/molpro/jobs/${input.jobid}`;
+                const url = `https://stage-rest.click2mail.com/molpro/jobs/1128459`;
                 const headers = getClick2mailBasicAuthHeader();
 
                 try {
@@ -322,7 +323,7 @@ export class MyMCP extends McpAgent {
             async (input) => {
                 // TODO: Implement validate_address logic here based on Python code
                 // This should call the Google Address Validation API.
-                const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+                const GOOGLE_API_KEY = env.GOOGLE_API_KEY;
                  if (!GOOGLE_API_KEY) {
                      return { content: [{ type: "text", text: "Google API Key for address validation is not configured." }] };
                  }
