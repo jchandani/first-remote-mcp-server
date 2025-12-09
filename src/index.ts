@@ -209,14 +209,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
 export default {
     fetch(request: Request, env: Env, ctx: ExecutionContext) {
         const url = new URL(request.url);
-       
-
-        if (url.pathname === "/sse" || url.pathname === "/sse/message") {
-            return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
-        }
-
-        if (url.pathname === "/mcp") {
-            const apiKey = request.headers.get('mcp_token');
+        const apiKey = request.headers.get('mcp_token');
          
             if (!apiKey) {
                 // If this logs, the client isn't sending the header.
@@ -227,6 +220,13 @@ export default {
                 ...ctx.props, // Preserve any existing props
                 toolExecutionApiKey: apiKey, // Use a descriptive, camelCase key
             };
+       
+
+        if (url.pathname === "/sse" || url.pathname === "/sse/message") {
+            return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
+        }
+
+        if (url.pathname === "/mcp") {
             return MyMCP.serve("/mcp").fetch(request, env, ctx);
         }
 
