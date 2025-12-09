@@ -195,7 +195,7 @@ export default {
         }
 
         if (url.pathname === "/mcp") {
-            const apiKey = url.searchParams.get('mcp_token');
+            const apiKey = request.headers.get('mcp_token');
             console.log(apiKey);
             const executionEnv = {
                 ...env, // spread existing environment
