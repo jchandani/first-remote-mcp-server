@@ -46,7 +46,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
         if (!apiKey) {
             console.error("TOOL_EXECUTION_API_KEY is missing in props.");
             // You should throw an error or handle the missing key
-            throw new Error("Authentication Failed: Missing tool API key.");
+            throw new Error("Authentication Failed 1: Missing tool API key.");
         }
         
         // Use the apiKey to create the Basic Authorization header
@@ -217,7 +217,12 @@ export default {
 
         if (url.pathname === "/mcp") {
             const apiKey = request.headers.get('mcp_token');
-            console.log(apiKey);
+         
+            if (!apiKey) {
+                // If this logs, the client isn't sending the header.
+                console.error("[DEBUG] Client did not send 'mcp_token' header.");
+                return new Response("Missing mcp_token header.", { status: 401 }); 
+            }
             ctx.props = {
                 ...ctx.props, // Preserve any existing props
                 toolExecutionApiKey: apiKey, // Use a descriptive, camelCase key
