@@ -30,7 +30,7 @@ export const AddressValidationResultSchema = z.object({
 });
 export type AddressValidationResult = z.infer<typeof AddressValidationResultSchema>;
 
-function getClick2mailBasicAuthHeader(): HeadersInit {
+function getClick2mailBasicAuthHeader(props: Record<string, any> = {}): HeadersInit {
     return {
        "Authorization": `Basic ${env.TOOL_EXECUTION_API_KEY}`,
        "Accept": "application/json"
@@ -59,7 +59,7 @@ export class MyMCP extends McpAgent {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: getClick2mailBasicAuthHeader(),
+                        headers: getClick2mailBasicAuthHeader(this.props),
                         // timeout: 30000
                     });
 
@@ -92,7 +92,7 @@ export class MyMCP extends McpAgent {
                 // TODO: Implement check_balance logic here based on Python code
                 // This should make an HTTP request to the Click2mail credit endpoint.
                 const url = `https://stage-rest.click2mail.com/molpro/credit`;
-                const headers = getClick2mailBasicAuthHeader();
+                const headers = getClick2mailBasicAuthHeader(this.props);
 
                 try {
                     const response = await fetch(url, {
@@ -197,11 +197,11 @@ export default {
         if (url.pathname === "/mcp") {
             const apiKey = request.headers.get('mcp_token');
             console.log(apiKey);
-            const executionEnv = {
-                ...env, // spread existing environment
-                TOOL_EXECUTION_API_KEY: apiKey, // Inject the specific query param
+            ctx.props = {
+                ...ctx.props, // Preserve any existing props
+                toolExecutionApiKey: apiKey, // Use a descriptive, camelCase key
             };
-            return MyMCP.serve("/mcp").fetch(request, executionEnv, ctx);
+            return MyMCP.serve("/mcp").fetch(request, env, ctx);
         }
 
         return new Response("Not found", { status: 404 });
