@@ -30,15 +30,36 @@ export const AddressValidationResultSchema = z.object({
 });
 export type AddressValidationResult = z.infer<typeof AddressValidationResultSchema>;
 
-function getClick2mailBasicAuthHeader(props: Record<string, any> = {}): HeadersInit {
-    return {
-       "Authorization": `Basic ${env.TOOL_EXECUTION_API_KEY}`,
-       "Accept": "application/json"
-   };
+
+// Define a type for your custom props for type safety
+interface CustomProps {
+    toolExecutionApiKey?: string;
 }
 
 // Define our MCP agent with tools
-export class MyMCP extends McpAgent {
+export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
+    getClick2mailBasicAuthHeader(): HeadersInit {
+        
+        // 🛑 Retrieve the key from the context properties (`this.props`)
+        const apiKey = this.props.toolExecutionApiKey;
+        
+        if (!apiKey) {
+            console.error("TOOL_EXECUTION_API_KEY is missing in props.");
+            // You should throw an error or handle the missing key
+            throw new Error("Authentication Failed: Missing tool API key.");
+        }
+        
+        // Use the apiKey to create the Basic Authorization header
+        // NOTE: Basic auth requires the value to be base64-encoded, typically "username:password"
+        // Ensure you are base64-encoding the value if that's what Click2Mail expects.
+        // If your 'mcp_token' is already the full base64 string, use it directly.
+        
+        return {
+           "Authorization": `Basic ${apiKey}`,
+           "Accept": "application/json"
+        };
+    }
+
     server = new McpServer({
         name: "Click2mail",
         version: "1.0.0", 
@@ -59,7 +80,7 @@ export class MyMCP extends McpAgent {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: getClick2mailBasicAuthHeader(this.props),
+                        headers: this.getClick2mailBasicAuthHeader(),
                         // timeout: 30000
                     });
 
@@ -92,7 +113,7 @@ export class MyMCP extends McpAgent {
                 // TODO: Implement check_balance logic here based on Python code
                 // This should make an HTTP request to the Click2mail credit endpoint.
                 const url = `https://stage-rest.click2mail.com/molpro/credit`;
-                const headers = getClick2mailBasicAuthHeader(this.props);
+                const headers = this.getClick2mailBasicAuthHeader();
 
                 try {
                     const response = await fetch(url, {
