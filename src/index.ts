@@ -107,6 +107,214 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
         );
 
         this.server.tool(
+            "get_documents",
+            "Retrieve list of documents from Click2Mail account",
+            {
+                limit: z.number().optional().describe("Maximum number of documents to return (default: 50, max: 100)"),
+                offset: z.number().optional().describe("Number of documents to skip for pagination (default: 0)"),
+            },
+            async ({ limit, offset }) => {
+                // Build query parameters
+                const params = new URLSearchParams();
+                if (limit !== undefined) {
+                    params.append('limit', Math.min(limit, 100).toString());
+                }
+                if (offset !== undefined) {
+                    params.append('offset', offset.toString());
+                }
+                
+                const queryString = params.toString();
+                const url = `https://stage-rest.click2mail.com/molpro/documents${queryString ? '?' + queryString : ''}`;
+        
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: this.getClick2mailBasicAuthHeader(),
+                    });
+        
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+        
+                    const data: any = await response.json();
+                    
+                    // Format the response for better readability
+                    if (data && Array.isArray(data)) {
+                        const documentList = data.map((doc: any) => ({
+                            id: doc.id,
+                            name: doc.documentName,
+                            status: doc.status,
+                            pages: doc.pages,
+                            created: doc.createdDate,
+                        }));
+                        
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: `Found ${documentList.length} documents:\n${JSON.stringify(documentList, null, 2)}` 
+                            }] 
+                        };
+                    } else {
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: JSON.stringify(data, null, 2) 
+                            }] 
+                        };
+                    }
+        
+                } catch (error: any) {
+                    console.error("Error retrieving documents:", error);
+                    return { 
+                        content: [{ 
+                            type: "text", 
+                            text: `Error retrieving documents: ${error.message}` 
+                        }] 
+                    };
+                }
+            }
+        );
+
+        this.server.tool(
+            "get_cost_estimate",
+            "Get cost estimate for a mailing job",
+            {
+                productClass: z.string().describe("Product class (e.g., Letter, Postcard)"),
+                layout: z.string().describe("Layout specification"),
+                envelope: z.string().describe("Envelope specification"),
+                productionTime: z.string().describe("Production time"),
+                mailingClass: z.string().describe("Mailing class (e.g., First, Standard)"),
+                color: z.boolean().describe("Color printing"),
+                doubleSided: z.boolean().describe("Double-sided printing"),
+                paperType: z.string().describe("Paper type specification"),
+                numberOfPages: z.number().optional().describe("How many pages in your document"),
+            },
+            async ({ numberOfPages, productClass, layout, envelope, productionTime, mailingClass, color, doubleSided, paperType }) => {
+                
+
+                const params = new URLSearchParams();
+                params.append('documentClass', productClass);
+                params.append('layout', layout);
+                params.append('productionTime', productionTime);
+                params.append('mailClass', mailingClass);
+                params.append('envelope', envelope);
+                params.append('color', color);
+                params.append('paperType', paperType);
+                params.append('printOption', doubleSided);
+                if (numberOfPages !== undefined) {
+                    params.append('numberOfPages', numberOfPages.toString());
+                }
+             
+                const queryString = params.toString();
+                const url = `https://stage-rest.click2mail.com/molpro/costEstimate${queryString ? '?' + queryString : ''}`;
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            ...this.getClick2mailBasicAuthHeader(),
+                            'Content-Type': 'application/json',
+                        }
+                    });
+        
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+        
+                    const data: any = await response.json();
+                    
+                    return { 
+                        content: [{ 
+                            type: "text", 
+                            text: `Cost Estimate:\n${JSON.stringify(data, null, 2)}` 
+                        }] 
+                    };
+        
+                } catch (error: any) {
+                    console.error("Error getting cost estimate:", error);
+                    return { 
+                        content: [{ 
+                            type: "text", 
+                            text: `Error getting cost estimate: ${error.message}` 
+                        }] 
+                    };
+                }
+            }
+        );
+
+        this.server.tool(
+            "get_address_lists",
+            "Retrieve address/mailing lists from Click2Mail account",
+            {
+                limit: z.number().optional().describe("Maximum number of address lists to return (default: 50, max: 100)"),
+                offset: z.number().optional().describe("Number of address lists to skip for pagination (default: 0)"),
+            },
+            async ({ limit, offset }) => {
+                // Build query parameters
+                const params = new URLSearchParams();
+                if (limit !== undefined) {
+                    params.append('limit', Math.min(limit, 100).toString());
+                }
+                if (offset !== undefined) {
+                    params.append('offset', offset.toString());
+                }
+                
+                const queryString = params.toString();
+                const url = `https://stage-rest.click2mail.com/molpro/addressLists${queryString ? '?' + queryString : ''}`;
+        
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: this.getClick2mailBasicAuthHeader(),
+                    });
+        
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+        
+                    const data: any = await response.json();
+                    
+                    // Format the response for better readability
+                    if (data && Array.isArray(data)) {
+                        const addressLists = data.map((list: any) => ({
+                            id: list.id,
+                            name: list.addressListName,
+                            addressCount: list.addressCount,
+                            created: list.createdDate,
+                            modified: list.modifiedDate,
+                        }));
+                        
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: `Found ${addressLists.length} address lists:\n${JSON.stringify(addressLists, null, 2)}` 
+                            }] 
+                        };
+                    } else {
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: JSON.stringify(data, null, 2) 
+                            }] 
+                        };
+                    }
+        
+                } catch (error: any) {
+                    console.error("Error retrieving address lists:", error);
+                    return { 
+                        content: [{ 
+                            type: "text", 
+                            text: `Error retrieving address lists: ${error.message}` 
+                        }] 
+                    };
+                }
+            }
+        );
+
+        this.server.tool(
             "check_balance",
             z.object({}), // No arguments
             async () => {
