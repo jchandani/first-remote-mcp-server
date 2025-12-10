@@ -741,7 +741,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                     "Business reply",
                     "Courtesy reply address",
                     "EDDM Mailer address"
-                ]).required().describe("Optional filter to retrieve addresses of a specific type."),
+                ]).describe("Optional filter to retrieve addresses of a specific type."),
             },            
             async ({addressType}) => {
                 // Base URL for the account addresses endpoint
