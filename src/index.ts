@@ -119,7 +119,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 country: z.string().optional().describe("Country name (defaults to 'US' if omitted by the API)."),
             },            
             async ({address1, address2, city, state, zip, country}) => {
-                const url = `https://stage-rest.click2mail.com/molpro/correctAddress`;
+                const url = `https://stage-rest.click2mail.com/molpro/addressCorrection`;
         
                 // Construct the request body
                 const requestBody = {
@@ -621,9 +621,9 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
         this.server.tool(
             "view_proof",
             "Gets the proof PDF for a given job ID. Use this when the user requests proof for a job.",
-            z.object({
-                jobid: z.string(),
-            }),
+            {	
+				jobid: z.string(),	
+			},            
             async ({ jobid }) => {
                 
                 console.log("Job id", jobid);
