@@ -3,7 +3,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { env } from "cloudflare:workers";
 
-type Env = { GOOGLE_API_KEY?: string; }; 
+type Env = {
+    GOOGLE_API_KEY?: string;
+    /**
+     * Base URL for Click2Mail REST API.
+     * Example values by environment:
+     * - dev:   https://dev-rest.click2mail.com
+     * - stage: https://stage-rest.click2mail.com
+     * - prod:  https://rest.click2mail.com
+     */
+    CLICK2MAIL_API_BASE_URL?: string;
+}; 
 
 
 type ExecutionContext = any;
@@ -38,6 +48,20 @@ interface CustomProps {
 
 // Define our MCP agent with tools
 export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
+    /**
+     * Resolve the Click2Mail base URL from the Worker environment.
+     * Falls back to stage if not configured.
+     */
+    private getClick2mailBaseUrl(): string {
+        const base =
+            (env as any).CLICK2MAIL_API_BASE_URL ||
+            // Sensible default if env var is missing
+            "https://stage-rest.click2mail.com";
+
+        // Ensure we don't end up with double slashes when building URLs
+        return base.replace(/\/+$/, "");
+    }
+
     getClick2mailBasicAuthHeader(): HeadersInit {
         
         // 🛑 Retrieve the key from the context properties (`this.props`)
@@ -55,7 +79,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
         // If your 'mcp_token' is already the full base64 string, use it directly.
         
         return {
-           "Authorization": `Basic ${apiKey}`,
+           "X-MCP-Token": `${apiKey}`,
            "Accept": "application/json"
         };
     }
@@ -74,7 +98,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
 				jobid: z.string(),	
 			},            
             async ({jobid}) => {
-                const url = `https://stage-rest.click2mail.com/molpro/jobs/${jobid}`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/jobs/${jobid}`;
 
 
                 try {
@@ -119,7 +143,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 country: z.string().optional().describe("Country name (defaults to 'US' if omitted by the API)."),
             },            
             async ({address1, address2, city, state, zip, country}) => {
-                const url = `https://stage-rest.click2mail.com/molpro/addressCorrection`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/addressCorrection`;
         
                 // Construct the request body
                 const requestBody = {
@@ -200,7 +224,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 }
                 
                 const queryString = params.toString();
-                const url = `https://stage-rest.click2mail.com/molpro/documents${queryString ? '?' + queryString : ''}`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/documents${queryString ? '?' + queryString : ''}`;
         
                 try {
                     const response = await fetch(url, {
@@ -510,7 +534,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 }
              
                 const queryString = params.toString();
-                const url = `https://stage-rest.click2mail.com/molpro/costEstimate${queryString ? '?' + queryString : ''}`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/costEstimate${queryString ? '?' + queryString : ''}`;
 
                 try {
                     const response = await fetch(url, {
@@ -565,7 +589,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 }
                 
                 const queryString = params.toString();
-                const url = `https://stage-rest.click2mail.com/molpro/projects${queryString ? '?' + queryString : ''}`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/projects${queryString ? '?' + queryString : ''}`;
         
                 try {
                     const response = await fetch(url, {
@@ -627,7 +651,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
             async ({ jobid }) => {
                 
                 console.log("Job id", jobid);
-                const url = `https://stage-rest.click2mail.com/molpro/jobs/${jobid}/proof`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/jobs/${jobid}/proof`;
                 
                 
                 try {
@@ -678,7 +702,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 }
                 
                 const queryString = params.toString();
-                const url = `https://stage-rest.click2mail.com/molpro/addressLists${queryString ? '?' + queryString : ''}`;
+                const url = `${this.getClick2mailBaseUrl()}/molpro/addressLists${queryString ? '?' + queryString : ''}`;
         
                 try {
                     const response = await fetch(url, {
@@ -745,7 +769,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
             },            
             async ({addressType}) => {
                 // Base URL for the account addresses endpoint
-                let url = `https://stage-rest.click2mail.com/molpro/account/addresses`;
+                let url = `${this.getClick2mailBaseUrl()}/molpro/account/addresses`;
         
                 // If an addressType is provided, append it as a query parameter
                 if (addressType) {
@@ -819,9 +843,8 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
             "check_balance",
             z.object({}), // No arguments
             async () => {
-                // TODO: Implement check_balance logic here based on Python code
-                // This should make an HTTP request to the Click2mail credit endpoint.
-                const url = `https://stage-rest.click2mail.com/molpro/credit`;
+                // This makes an HTTP request to the Click2Mail credit endpoint.
+                const url = `${this.getClick2mailBaseUrl()}/molpro/credit`;
                 const headers = this.getClick2mailBasicAuthHeader();
 
                 try {
@@ -848,6 +871,55 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 } catch (error: any) {
                     console.error("Error checking balance:", error);
                      return { content: [{ type: "text", text: `Error checking balance: ${error.message}` }] };
+                }
+            }
+        );
+
+        this.server.tool(
+            "get_crid_info",
+            "Retrieve CRID (Customer Reference ID) information from Click2Mail account",
+            z.object({}), // No arguments
+            async () => {
+                const url = `${this.getClick2mailBaseUrl()}/molpro/account/crid`;
+        
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: this.getClick2mailBasicAuthHeader(),
+                    });
+        
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
+                    }
+        
+                    const data: any = await response.json();
+                    
+                    // Format the response for better readability
+                    if (data && Object.keys(data).length > 0) {
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: `CRID Information:\n${JSON.stringify(data, null, 2)}` 
+                            }] 
+                        };
+                    } else {
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: `No CRID information found` 
+                            }] 
+                        };
+                    }
+        
+                } catch (error: any) {
+                    console.error("Error retrieving CRID information:", error);
+                    return { 
+                        content: [{ 
+                            type: "text", 
+                            text: `Error retrieving CRID information: ${error.message}` 
+                        }] 
+                    };
                 }
             }
         );
