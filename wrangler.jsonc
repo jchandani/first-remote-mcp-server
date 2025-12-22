@@ -8,6 +8,26 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
 	"compatibility_flags": ["nodejs_compat"],
+	// Default (used if no environment is specified)
+	"vars": {
+		"CLICK2MAIL_API_BASE_URL": "https://stage-rest.click2mail.com"
+	  },
+	
+	  // Dev environment
+	  "dev": {
+		"vars": {
+		  "CLICK2MAIL_API_BASE_URL": "https://dev-rest.click2mail.com"
+		}
+	  },
+	
+	  // Production environment
+	  "env": {
+		"production": {
+		  "vars": {
+			"CLICK2MAIL_API_BASE_URL": "https://rest.click2mail.com"
+		  }
+		}
+	  },
 	"migrations": [
 		{
 			"new_sqlite_classes": ["MyMCP"],

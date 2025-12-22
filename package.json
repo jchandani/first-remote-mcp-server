@@ -4,6 +4,9 @@
 	"private": true,
 	"scripts": {
 		"deploy": "wrangler deploy",
+		"deploy:dev": "wrangler deploy --env dev",
+		"deploy:stage": "wrangler deploy --env stage",
+		"deploy:prod": "wrangler deploy --env production",
 		"dev": "wrangler dev",
 		"format": "biome format --write",
 		"lint:fix": "biome lint --fix",
