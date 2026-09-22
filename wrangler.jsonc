@@ -8,29 +8,60 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-03-10",
 	"compatibility_flags": ["nodejs_compat"],
-	// Default (used if no environment is specified)
+	// Default (used if no environment is specified) - this is what `npm run deploy` (no --env)
+	// pushes to first-remote-mcp-server.jitendra-chandani.workers.dev, the URL already configured
+	// in Claude Desktop's ~/.mcp.json.
 	// AUTH_BASE_URL must point at wherever c2m-auth-service is actually deployed for this tier -
 	// this Worker calls its POST /v2/auth/token and /v2/auth/token/refresh directly (see
 	// MyMCP.ensureAccessToken) - update these placeholders accordingly.
 	"vars": {
-		"CLICK2MAIL_API_BASE_URL": "https://stage-rest.click2mail.com",
-		"AUTH_BASE_URL": "https://stage-auth.click2mail.com"
+		"CLICK2MAIL_API_BASE_URL": "https://dev-rest.click2mail.com",
+		"AUTH_BASE_URL": "https://dev-auth.click2mail.com"
 	  },
 
-	  // Dev environment
-	  "dev": {
-		"vars": {
-		  "CLICK2MAIL_API_BASE_URL": "https://dev-rest.click2mail.com",
-		  "AUTH_BASE_URL": "https://dev-auth.click2mail.com"
-		}
-	  },
-
-	  // Production environment
 	  "env": {
+		// Dev environment - `npm run deploy:dev` / `wrangler deploy --env dev`
+		"dev": {
+		  "vars": {
+			"CLICK2MAIL_API_BASE_URL": "https://dev-rest.click2mail.com",
+			"AUTH_BASE_URL": "https://dev-auth.click2mail.com"
+		  },
+		  // Named environments don't inherit top-level durable_objects/migrations - must repeat here.
+		  "migrations": [
+			{
+			  "new_sqlite_classes": ["MyMCP"],
+			  "tag": "v1"
+			}
+		  ],
+		  "durable_objects": {
+			"bindings": [
+			  {
+				"class_name": "MyMCP",
+				"name": "MCP_OBJECT"
+			  }
+			]
+		  }
+		},
+
+		// Production environment - `npm run deploy:prod` / `wrangler deploy --env production`
 		"production": {
 		  "vars": {
 			"CLICK2MAIL_API_BASE_URL": "https://rest.click2mail.com",
 			"AUTH_BASE_URL": "https://auth.click2mail.com"
+		  },
+		  "migrations": [
+			{
+			  "new_sqlite_classes": ["MyMCP"],
+			  "tag": "v1"
+			}
+		  ],
+		  "durable_objects": {
+			"bindings": [
+			  {
+				"class_name": "MyMCP",
+				"name": "MCP_OBJECT"
+			  }
+			]
 		  }
 		}
 	  },
