@@ -9,22 +9,28 @@
 	"compatibility_date": "2025-03-10",
 	"compatibility_flags": ["nodejs_compat"],
 	// Default (used if no environment is specified)
+	// AUTH_BASE_URL must point at wherever c2m-auth-service is actually deployed for this tier -
+	// this Worker calls its POST /v2/auth/token and /v2/auth/token/refresh directly (see
+	// MyMCP.ensureAccessToken) - update these placeholders accordingly.
 	"vars": {
-		"CLICK2MAIL_API_BASE_URL": "https://stage-rest.click2mail.com"
+		"CLICK2MAIL_API_BASE_URL": "https://stage-rest.click2mail.com",
+		"AUTH_BASE_URL": "https://stage-auth.click2mail.com"
 	  },
-	
+
 	  // Dev environment
 	  "dev": {
 		"vars": {
-		  "CLICK2MAIL_API_BASE_URL": "https://dev-rest.click2mail.com"
+		  "CLICK2MAIL_API_BASE_URL": "https://dev-rest.click2mail.com",
+		  "AUTH_BASE_URL": "https://dev-auth.click2mail.com"
 		}
 	  },
-	
+
 	  // Production environment
 	  "env": {
 		"production": {
 		  "vars": {
-			"CLICK2MAIL_API_BASE_URL": "https://rest.click2mail.com"
+			"CLICK2MAIL_API_BASE_URL": "https://rest.click2mail.com",
+			"AUTH_BASE_URL": "https://auth.click2mail.com"
 		  }
 		}
 	  },

@@ -13,7 +13,13 @@ type Env = {
      * - prod:  https://rest.click2mail.com
      */
     CLICK2MAIL_API_BASE_URL?: string;
-}; 
+    /**
+     * Base URL of c2m-auth-service for this environment (also its `iss`). This Worker calls
+     * `${AUTH_BASE_URL}/v2/auth/token` and `/v2/auth/token/refresh` itself — see the class-level
+     * comment on `MyMCP` for why the client never sees these calls directly.
+     */
+    AUTH_BASE_URL?: string;
+};
 
 
 type ExecutionContext = any;
@@ -43,10 +49,31 @@ export type AddressValidationResult = z.infer<typeof AddressValidationResultSche
 
 // Define a type for your custom props for type safety
 interface CustomProps {
-    toolExecutionApiKey?: string;
+    /** The Magento API key the MCP client authenticates with — same credential as before, just no
+     *  longer forwarded to Click2Mail directly (see `MyMCP.ensureAccessToken`). */
+    apiKey?: string;
 }
 
-// Define our MCP agent with tools
+/** Cached in this session's Durable Object storage — never sent to the MCP client. */
+interface CachedTokenSet {
+    accessToken: string;
+    accessTokenExpiresAt: number;
+    refreshToken: string;
+}
+
+// Refresh this many ms before the access token's actual expiry, so a slow downstream call never
+// races past it mid-flight.
+const ACCESS_TOKEN_REFRESH_BUFFER_MS = 30_000;
+
+/**
+ * MCP clients (Claude Desktop via `mcp-remote`, etc.) can only set a static header value in their
+ * config — they have no way to refresh it. So the client keeps presenting the same long-lived
+ * Magento `api_key` it always has (see the top-level `fetch` export), and this Durable Object does
+ * the c2m-auth-service token dance itself: exchange the api_key for a refresh token once
+ * (`fetchTokenSet`), mint access tokens from it (`redeemRefreshToken`), and cache + silently
+ * refresh them for the life of this MCP session (`ensureAccessToken`) — the client and Click2Mail
+ * never see anything but a fresh JWT on the wire.
+ */
 export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
     /**
      * Resolve the Click2Mail base URL from the Worker environment.
@@ -62,31 +89,106 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
         return base.replace(/\/+$/, "");
     }
 
-    getClick2mailBasicAuthHeader(): HeadersInit {
-        
-        // 🛑 Retrieve the key from the context properties (`this.props`)
-        const apiKey = this.props.toolExecutionApiKey;
-        
-        if (!apiKey) {
-            console.error("TOOL_EXECUTION_API_KEY is missing in props.");
-            // You should throw an error or handle the missing key
-            throw new Error("Authentication Failed 1: Missing tool API key.");
+    private getAuthBaseUrl(): string {
+        const base = (env as any).AUTH_BASE_URL;
+        if (!base) {
+            throw new Error("AUTH_BASE_URL is not configured for this environment.");
         }
-        
-        // Use the apiKey to create the Basic Authorization header
-        // NOTE: Basic auth requires the value to be base64-encoded, typically "username:password"
-        // Ensure you are base64-encoding the value if that's what Click2Mail expects.
-        // If your 'mcp_token' is already the full base64 string, use it directly.
-        
+        return base.replace(/\/+$/, "");
+    }
+
+    /** `POST /v2/auth/token` — trades the client's Magento api_key for a fresh refresh token. */
+    private async fetchTokenSet(): Promise<CachedTokenSet> {
+        const apiKey = this.props.apiKey;
+        if (!apiKey) {
+            console.error("Api key is missing in props.");
+            throw new Error("Authentication failed: missing api key.");
+        }
+
+        const response = await fetch(`${this.getAuthBaseUrl()}/v2/auth/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: apiKey }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`c2m-auth-service rejected the api key: ${response.status} ${errorBody}`);
+        }
+
+        const { refresh_token } = await response.json() as { refresh_token: string };
+        return this.redeemRefreshToken(refresh_token);
+    }
+
+    /**
+     * `POST /v2/auth/token/refresh` — mints a fresh access token and, per c2m-auth-service's
+     * rotation scheme, a replacement refresh token that must overwrite the one just spent (reusing
+     * a spent refresh token revokes the whole session). The rotated pair is cached immediately so
+     * nothing else in this DO can accidentally redeem the now-dead one.
+     */
+    private async redeemRefreshToken(refreshToken: string): Promise<CachedTokenSet> {
+        const response = await fetch(`${this.getAuthBaseUrl()}/v2/auth/token/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`c2m-auth-service rejected the refresh token: ${response.status} ${errorBody}`);
+        }
+
+        const data = await response.json() as {
+            access_token: string;
+            refresh_token: string;
+            expires_in: number;
+        };
+
+        const tokenSet: CachedTokenSet = {
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token,
+            accessTokenExpiresAt: Date.now() + data.expires_in * 1000,
+        };
+        await this.ctx.storage.put("c2mTokenSet", tokenSet);
+        return tokenSet;
+    }
+
+    /**
+     * Returns a currently-valid access token, refreshing (or, failing that, re-bootstrapping from
+     * the api key) as needed. This is the only place tool handlers should get one from.
+     */
+    private async ensureAccessToken(): Promise<string> {
+        const cached = await this.ctx.storage.get<CachedTokenSet>("c2mTokenSet");
+
+        if (cached && cached.accessTokenExpiresAt - ACCESS_TOKEN_REFRESH_BUFFER_MS > Date.now()) {
+            return cached.accessToken;
+        }
+
+        if (cached?.refreshToken) {
+            try {
+                const refreshed = await this.redeemRefreshToken(cached.refreshToken);
+                return refreshed.accessToken;
+            } catch (error) {
+                console.error("Refresh token redemption failed, re-bootstrapping from api key:", error);
+                await this.ctx.storage.delete("c2mTokenSet");
+            }
+        }
+
+        const bootstrapped = await this.fetchTokenSet();
+        return bootstrapped.accessToken;
+    }
+
+    async getClick2mailAuthHeader(): Promise<HeadersInit> {
+        const accessToken = await this.ensureAccessToken();
         return {
-           "X-MCP-Token": `${apiKey}`,
+           "Authorization": `Bearer ${accessToken}`,
            "Accept": "application/json"
         };
     }
 
     server = new McpServer({
         name: "Click2mail",
-        version: "1.0.0", 
+        version: "1.0.0",
     });
 
     async init() {
@@ -104,7 +206,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                         // timeout: 30000
                     });
 
@@ -159,7 +261,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                     const response = await fetch(url, {
                         method: 'POST', // Use POST for correctAddress
                         headers: {
-                            ...this.getClick2mailBasicAuthHeader(),
+                            ...(await this.getClick2mailAuthHeader()),
                             'Content-Type': 'application/json', // Specify content type for JSON body
                         },
                         body: JSON.stringify(requestBody),
@@ -229,7 +331,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                     });
         
                     if (!response.ok) {
@@ -540,7 +642,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                     const response = await fetch(url, {
                         method: 'GET',
                         headers: {
-                            ...this.getClick2mailBasicAuthHeader(),
+                            ...(await this.getClick2mailAuthHeader()),
                             'Content-Type': 'application/json',
                         }
                     });
@@ -594,7 +696,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                     });
         
                     if (!response.ok) {
@@ -657,7 +759,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                         // fetch API doesn't have a direct timeout, consider using a library or AbortController
                     });
 
@@ -707,7 +809,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                     });
         
                     if (!response.ok) {
@@ -781,7 +883,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'GET', // Use GET for retrieval
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                         // timeout: 30000
                     });
         
@@ -845,7 +947,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
             async () => {
                 // This makes an HTTP request to the Click2Mail credit endpoint.
                 const url = `${this.getClick2mailBaseUrl()}/molpro/credit`;
-                const headers = this.getClick2mailBasicAuthHeader();
+                const headers = await this.getClick2mailAuthHeader();
 
                 try {
                     const response = await fetch(url, {
@@ -885,7 +987,7 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
                 try {
                     const response = await fetch(url, {
                         method: 'GET',
-                        headers: this.getClick2mailBasicAuthHeader(),
+                        headers: await this.getClick2mailAuthHeader(),
                     });
         
                     if (!response.ok) {
@@ -933,18 +1035,23 @@ export class MyMCP extends McpAgent<Env, unknown, CustomProps> {
 export default {
     fetch(request: Request, env: Env, ctx: ExecutionContext) {
         const url = new URL(request.url);
-        const apiKey = request.headers.get('mcp_token');
-         
-            if (!apiKey) {
-                // If this logs, the client isn't sending the header.
-                console.error("[DEBUG] Client did not send 'mcp_token' header.");
-                return new Response("Missing mcp_token header.", { status: 401 }); 
-            }
-            ctx.props = {
-                ...ctx.props, // Preserve any existing props
-                toolExecutionApiKey: apiKey, // Use a descriptive, camelCase key
-            };
-       
+
+        // Same static credential clients have always configured — their Magento api_key, sent as
+        // a standard `Authorization: Bearer <api_key>` header (not the old custom `mcp_token`
+        // header, and not a JWT: see MyMCP's class comment for why the client still hands us a
+        // long-lived value rather than a short-lived access token it can't refresh itself).
+        const authHeader = request.headers.get("Authorization");
+        const [scheme, apiKey] = authHeader?.split(" ") ?? [];
+
+        if (scheme?.toLowerCase() !== "bearer" || !apiKey) {
+            console.error("[DEBUG] Client did not send an 'Authorization: Bearer <api_key>' header.");
+            return new Response("Missing or malformed Authorization: Bearer <api_key> header.", { status: 401 });
+        }
+
+        ctx.props = {
+            ...ctx.props, // Preserve any existing props
+            apiKey,
+        } satisfies CustomProps;
 
         if (url.pathname === "/sse" || url.pathname === "/sse/message") {
             return MyMCP.serveSSE("/sse").fetch(request, env, ctx);
@@ -956,4 +1063,4 @@ export default {
 
         return new Response("Not found", { status: 404 });
     },
-}; 
+};
